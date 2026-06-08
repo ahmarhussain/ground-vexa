@@ -46,6 +46,17 @@ DB_PASSWORD=postgres
 # REMOTE_DB=true
 # DB_HOST=your-postgres-host
 # DB_PORT=5432
+# Or provide a full URL:
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vexa
+
+# Redis (internal by default in lite)
+# For external Redis in lite, uncomment:
+# LITE_EXTERNAL_REDIS=true
+# REDIS_URL=redis://localhost:6379/0
+
+# Lite optional services
+# Disable local TTS/Piper voice setup when you do not use /speak:
+# DISABLE_TTS_SERVICE=true
 
 # Storage (embedded minio by default)
 STORAGE_BACKEND=minio

@@ -20,14 +20,7 @@ echo ""
 
 # Redis configuration - supports REDIS_URL or individual vars
 USE_INTERNAL_REDIS=false
-if [ -z "$REDIS_HOST" ] || [ "$REDIS_HOST" = "localhost" ] || [ "$REDIS_HOST" = "127.0.0.1" ]; then
-    USE_INTERNAL_REDIS=true
-    export REDIS_HOST="localhost"
-    export REDIS_PORT="${REDIS_PORT:-6379}"
-    export REDIS_USER=""
-    export REDIS_PASSWORD=""
-    export REDIS_URL="redis://localhost:${REDIS_PORT}/0"
-elif [ -n "$REDIS_URL" ]; then
+if [ -n "$REDIS_URL" ]; then
     REDIS_URL_NO_SCHEME="${REDIS_URL#*://}"
     if [[ "$REDIS_URL_NO_SCHEME" == *"@"* ]]; then
         REDIS_AUTH="${REDIS_URL_NO_SCHEME%%@*}"
@@ -46,7 +39,18 @@ elif [ -n "$REDIS_URL" ]; then
     fi
     REDIS_HOSTPORT="${REDIS_HOSTPORTDB%%/*}"
     export REDIS_HOST="${REDIS_HOSTPORT%%:*}"
-    export REDIS_PORT="${REDIS_HOSTPORT#*:}"
+    if [[ "$REDIS_HOSTPORT" == *":"* ]]; then
+        export REDIS_PORT="${REDIS_HOSTPORT#*:}"
+    else
+        export REDIS_PORT="${REDIS_PORT:-6379}"
+    fi
+elif [ -z "$REDIS_HOST" ] || [ "$REDIS_HOST" = "localhost" ] || [ "$REDIS_HOST" = "127.0.0.1" ]; then
+    USE_INTERNAL_REDIS=true
+    export REDIS_HOST="localhost"
+    export REDIS_PORT="${REDIS_PORT:-6379}"
+    export REDIS_USER=""
+    export REDIS_PASSWORD=""
+    export REDIS_URL="redis://localhost:${REDIS_PORT}/0"
 else
     export REDIS_HOST="${REDIS_HOST:-localhost}"
     export REDIS_PORT="${REDIS_PORT:-6379}"
@@ -138,7 +142,10 @@ fi
 # Setup Internal Redis (if using localhost)
 # -----------------------------------------------------------------------------
 
-if [ "$USE_INTERNAL_REDIS" = "true" ]; then
+if [ "$DISABLE_INTERNAL_REDIS" = "true" ]; then
+    echo "Internal Redis disabled."
+    echo ""
+elif [ "$USE_INTERNAL_REDIS" = "true" ]; then
     echo "Using internal Redis server..."
     mkdir -p /var/lib/redis /var/run/redis
     chmod 755 /var/lib/redis /var/run/redis
@@ -350,7 +357,9 @@ check "Meeting API"    "http://localhost:8080/health"
 check "Runtime API"    "http://localhost:8090/health"
 check "Agent API"      "http://localhost:8100/health"
 check "Dashboard"      "http://localhost:3000/"
-check "TTS Service"    "http://localhost:8059/health"
+if [ "${DISABLE_TTS_SERVICE:-false}" != "true" ]; then
+    check "TTS Service"    "http://localhost:8059/health"
+fi
 
 if redis-cli ping 2>/dev/null | grep -q PONG; then
     echo "  OK: Redis"
@@ -391,6 +400,16 @@ echo "  - Agent API:      http://localhost:8100"
 echo "  - Dashboard:      http://localhost:3000"
 echo "  - API Docs:       https://docs.vexa.ai"
 echo ""
+
+if [ "$USE_INTERNAL_REDIS" != "true" ] || [ "${DISABLE_INTERNAL_REDIS:-false}" = "true" ]; then
+    echo "Disabling internal Redis supervisor program; using ${REDIS_URL}"
+    sed -i '/^\[program:redis\]/,/^$/ s/^autostart=true/autostart=false/' /etc/supervisor/conf.d/vexa.conf
+fi
+
+if [ "${DISABLE_TTS_SERVICE:-false}" = "true" ]; then
+    echo "Disabling TTS supervisor program"
+    sed -i '/^\[program:tts-service\]/,/^$/ s/^autostart=true/autostart=false/' /etc/supervisor/conf.d/vexa.conf
+fi
 
 # Run post-startup validation in background
 /usr/local/bin/post-startup-check.sh &

@@ -19,7 +19,7 @@ BUILDER_NAME ?= vexa-multiarch
 # Paths (Makefile is in deploy/lite/, Dockerfile is in same dir, context is repo root)
 DOCKERFILE := $(shell pwd)/Dockerfile.lite
 CONTEXT := $(shell pwd)/../..
-LOCAL_TAG := $(IMAGE_NAME):$(TAG)
+LOCAL_TAG := $(DOCKERHUB_USER)/$(IMAGE_NAME):$(TAG)
 
 # Generate unique timestamp tag: YYMMDD-HHMM
 UNIQUE_TAG := $(shell date +%y%m%d-%H%M)
@@ -129,52 +129,146 @@ up:
 	@if ! docker info > /dev/null 2>&1; then echo "ERROR: Docker is not running."; exit 1; fi
 	@IMAGE_TAG=$$(grep -E '^IMAGE_TAG=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	IMAGE_TAG=$${IMAGE_TAG:-latest}; \
+	REMOTE_DB=$$(grep -E '^REMOTE_DB=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_HOST=$$(grep -E '^DB_HOST=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_PORT=$$(grep -E '^DB_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_NAME=$$(grep -E '^DB_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_USER=$$(grep -E '^DB_USER=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_PASSWORD=$$(grep -E '^DB_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DATABASE_URL=$$(grep -E '^DATABASE_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	PG_PORT=$$(grep -E '^LITE_POSTGRES_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	PG_PORT=$${PG_PORT:-$$(grep -E '^POSTGRES_HOST_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
+	PG_PORT=$${PG_PORT:-5432}; \
+	DB_NAME=$${DB_NAME:-vexa}; \
+	DB_USER=$${DB_USER:-postgres}; \
+	DB_PASSWORD=$${DB_PASSWORD:-postgres}; \
+	if [ -n "$$DATABASE_URL" ]; then \
+		USE_MANAGED_POSTGRES=false; \
+	elif [ "$$REMOTE_DB" = "true" ]; then \
+		USE_MANAGED_POSTGRES=false; \
+		DB_HOST=$${DB_HOST:-localhost}; \
+		DB_PORT=$${DB_PORT:-5432}; \
+		DATABASE_URL=postgresql://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$$DB_NAME; \
+	else \
+		USE_MANAGED_POSTGRES=true; \
+		DB_HOST=localhost; \
+		DB_PORT=$$PG_PORT; \
+		DB_NAME=vexa; \
+		DB_USER=postgres; \
+		DB_PASSWORD=postgres; \
+		DATABASE_URL=postgresql://postgres:postgres@localhost:$$PG_PORT/vexa; \
+	fi; \
+	REDIS_URL=$$(grep -E '^REDIS_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	REDIS_URL=$${REDIS_URL:-redis://localhost:6379/0}; \
+	REDIS_URL_NO_SCHEME=$${REDIS_URL#*://}; \
+	REDIS_HOSTPORTDB=$${REDIS_URL_NO_SCHEME#*@}; \
+	REDIS_HOSTPORT=$${REDIS_HOSTPORTDB%%/*}; \
+	REDIS_HOST=$$(grep -E '^REDIS_HOST=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	REDIS_PORT=$$(grep -E '^REDIS_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	REDIS_HOST=$${REDIS_HOST:-$${REDIS_HOSTPORT%%:*}}; \
+	if [ "$$REDIS_HOSTPORT" != "$${REDIS_HOSTPORT#*:}" ]; then \
+		REDIS_PORT=$${REDIS_PORT:-$${REDIS_HOSTPORT#*:}}; \
+	fi; \
+	REDIS_PORT=$${REDIS_PORT:-6379}; \
+	DISABLE_TTS=$$(grep -E '^DISABLE_TTS_SERVICE=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DISABLE_TTS=$${DISABLE_TTS:-$$(grep -E '^LITE_DISABLE_TTS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
+	DISABLE_TTS=$${DISABLE_TTS:-false}; \
+	LITE_EXTERNAL_REDIS=$$(grep -E '^LITE_EXTERNAL_REDIS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DISABLE_INTERNAL_REDIS=$$(grep -E '^DISABLE_INTERNAL_REDIS=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DISABLE_INTERNAL_REDIS=$${DISABLE_INTERNAL_REDIS:-$$LITE_EXTERNAL_REDIS}; \
+	DISABLE_INTERNAL_REDIS=$${DISABLE_INTERNAL_REDIS:-false}; \
+	if [ "$$DISABLE_TTS" = "true" ]; then \
+		TTS_ENVS="-e DISABLE_TTS_SERVICE=true -e PIPER_DEFAULT_VOICES= -e PIPER_LOAD_VOICES= -e PIPER_PRELOAD_STRICT=false"; \
+	else \
+		TTS_ENVS=""; \
+	fi; \
 	TX_URL=$$(grep -E '^LITE_TRANSCRIPTION_SERVICE_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	TX_URL=$${TX_URL:-$$(grep -E '^TRANSCRIPTION_SERVICE_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
 	TX_TOKEN=$$(grep -E '^LITE_TRANSCRIPTION_SERVICE_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	TX_TOKEN=$${TX_TOKEN:-$$(grep -E '^TRANSCRIPTION_SERVICE_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
 	ADMIN_TK=$$(grep -E '^ADMIN_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	ADMIN_TK=$${ADMIN_TK:-changeme}; \
-	echo "Starting PostgreSQL..."; \
-	if docker ps -q -f name=vexa-postgres 2>/dev/null | grep -q .; then \
-		echo "  PostgreSQL already running"; \
-	else \
-		docker rm -f vexa-postgres 2>/dev/null || true; \
-		docker run -d --name vexa-postgres --network host \
-			-e POSTGRES_DB=vexa \
-			-e POSTGRES_USER=postgres \
-			-e POSTGRES_PASSWORD=postgres \
-			postgres:17-alpine \
-			-c listen_addresses=127.0.0.1 \
-			-c idle_in_transaction_session_timeout=60000 > /dev/null; \
+	if [ "$$USE_MANAGED_POSTGRES" = "true" ]; then \
+		echo "Starting PostgreSQL on 127.0.0.1:$$PG_PORT..."; \
+		if docker ps -q -f name=vexa-postgres 2>/dev/null | grep -q .; then \
+			echo "  PostgreSQL already running"; \
+		else \
+			docker rm -f vexa-postgres 2>/dev/null || true; \
+			docker run -d --name vexa-postgres --network host \
+				-e POSTGRES_DB=vexa \
+				-e POSTGRES_USER=postgres \
+				-e POSTGRES_PASSWORD=postgres \
+				postgres:17-alpine \
+				-c listen_addresses=127.0.0.1 \
+				-c port=$$PG_PORT \
+				-c idle_in_transaction_session_timeout=60000 > /dev/null; \
+		fi; \
 		echo "  Waiting for PostgreSQL..."; \
+		PG_READY=0; \
 		for i in $$(seq 1 12); do \
-			docker exec vexa-postgres pg_isready -U postgres -d vexa -q 2>/dev/null && break; \
+			if ! docker ps -q -f name=vexa-postgres 2>/dev/null | grep -q .; then \
+				echo "ERROR: PostgreSQL container exited during startup."; \
+				docker logs --tail 80 vexa-postgres 2>/dev/null || true; \
+				exit 1; \
+			fi; \
+			if docker exec vexa-postgres pg_isready -h 127.0.0.1 -p $$PG_PORT -U postgres -d vexa -q 2>/dev/null; then \
+				PG_READY=1; \
+				break; \
+			fi; \
 			sleep 5; \
 		done; \
+		if [ "$$PG_READY" != "1" ]; then \
+			echo "ERROR: PostgreSQL did not become ready on 127.0.0.1:$$PG_PORT."; \
+			docker logs --tail 80 vexa-postgres 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+		echo "  ✓ PostgreSQL ready"; \
+	else \
+		echo "Using external PostgreSQL: $$DATABASE_URL"; \
 	fi; \
-	echo "  ✓ PostgreSQL ready"; \
 	echo "Pulling $(DOCKERHUB_USER)/$(IMAGE_NAME):$$IMAGE_TAG..."; \
 	docker pull $(DOCKERHUB_USER)/$(IMAGE_NAME):$$IMAGE_TAG; \
 	echo "Starting Vexa Lite..."; \
 	docker rm -f vexa-lite 2>/dev/null || true; \
 	docker run -d --name vexa-lite --shm-size=2g --network host \
 		-v vexa-lite-recordings:/var/lib/vexa/recordings \
-		-e DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vexa \
-		-e DB_PASSWORD=postgres \
+		-e DATABASE_URL="$$DATABASE_URL" \
+		-e DB_HOST="$$DB_HOST" \
+		-e DB_PORT="$$DB_PORT" \
+		-e DB_NAME="$$DB_NAME" \
+		-e DB_USER="$$DB_USER" \
+		-e DB_PASSWORD="$$DB_PASSWORD" \
 		-e DB_SSL_MODE=disable \
-		-e REDIS_URL=redis://localhost:6379/0 \
-		-e ADMIN_API_TOKEN=$$ADMIN_TK \
+		-e REDIS_URL="$$REDIS_URL" \
+		-e REDIS_HOST="$$REDIS_HOST" \
+		-e REDIS_PORT="$$REDIS_PORT" \
+		-e DISABLE_INTERNAL_REDIS="$$DISABLE_INTERNAL_REDIS" \
+		-e ADMIN_API_TOKEN="$$ADMIN_TK" \
 		-e VEXA_AUTH_COOKIE_NAME=vexa-token-lite \
 		-e VEXA_USER_INFO_COOKIE_NAME=vexa-user-info-lite \
-		-e TRANSCRIPTION_SERVICE_URL=$$TX_URL \
-		-e TRANSCRIPTION_SERVICE_TOKEN=$$TX_TOKEN \
+		-e TRANSCRIPTION_SERVICE_URL="$$TX_URL" \
+		-e TRANSCRIPTION_SERVICE_TOKEN="$$TX_TOKEN" \
+		$$TTS_ENVS \
 		$(DOCKERHUB_USER)/$(IMAGE_NAME):$$IMAGE_TAG > /dev/null; \
 	echo "  Waiting for services (up to 2 min)..."; \
+	LITE_READY=0; \
 	for i in $$(seq 1 24); do \
-		curl -sf -o /dev/null http://localhost:8056/ 2>/dev/null && break; \
+		if ! docker ps -q -f name=vexa-lite 2>/dev/null | grep -q .; then \
+			echo "ERROR: Vexa Lite container exited during startup."; \
+			docker logs --tail 120 vexa-lite 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+		if curl -sf -o /dev/null http://localhost:8056/docs 2>/dev/null; then \
+			LITE_READY=1; \
+			break; \
+		fi; \
 		sleep 5; \
 	done; \
+	if [ "$$LITE_READY" != "1" ]; then \
+		echo "ERROR: Vexa Lite API did not become ready at http://localhost:8056/docs."; \
+		docker logs --tail 120 vexa-lite 2>/dev/null || true; \
+		exit 1; \
+	fi; \
 	echo "  ✓ Vexa Lite running"
 
 # --- Init DB ---
