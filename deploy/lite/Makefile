@@ -134,7 +134,7 @@ up:
 	DB_PORT=$$(grep -E '^DB_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	DB_NAME=$$(grep -E '^DB_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	DB_USER=$$(grep -E '^DB_USER=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
-	DB_PASSWORD=$$(grep -E '^DB_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DB_PASSWORD=$$(grep -E '^DB_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
 	DATABASE_URL=$$(grep -E '^DATABASE_URL=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
 	PG_PORT=$$(grep -E '^LITE_POSTGRES_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	PG_PORT=$${PG_PORT:-$$(grep -E '^POSTGRES_HOST_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
@@ -148,7 +148,7 @@ up:
 		USE_MANAGED_POSTGRES=false; \
 		DB_HOST=$${DB_HOST:-localhost}; \
 		DB_PORT=$${DB_PORT:-5432}; \
-		DATABASE_URL=postgresql://$$DB_USER:$$DB_PASSWORD@$$DB_HOST:$$DB_PORT/$$DB_NAME; \
+		DATABASE_URL=$$(DB_USER="$$DB_USER" DB_PASSWORD="$$DB_PASSWORD" DB_HOST="$$DB_HOST" DB_PORT="$$DB_PORT" DB_NAME="$$DB_NAME" python3 -c 'import os; from urllib.parse import quote; print("postgresql://{}:{}@{}:{}/{}".format(quote(os.environ["DB_USER"], safe=""), quote(os.environ["DB_PASSWORD"], safe=""), os.environ["DB_HOST"], os.environ["DB_PORT"], quote(os.environ["DB_NAME"], safe="")))'); \
 	else \
 		USE_MANAGED_POSTGRES=true; \
 		DB_HOST=localhost; \

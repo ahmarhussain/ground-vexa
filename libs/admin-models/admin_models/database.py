@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy import create_engine # For sync engine if needed for migrations later
+from sqlalchemy.engine import URL
 from sqlalchemy.sql import text
 
 # Import Base from models within the same package
@@ -36,12 +37,25 @@ if not all([DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD]):
     ]
     raise ValueError(f"Missing required database environment variables: {', '.join(missing_vars)}")
 
-# Build connection URLs with SSL support
-# For asyncpg: SSL is handled via connect_args, not URL query parameters
-# For psycopg2: SSL is handled via query parameters in the URL
-DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-ssl_params = f"?sslmode={DB_SSL_MODE}" if DB_SSL_MODE else ""
-DATABASE_URL_SYNC = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_params}"
+# Build connection URLs with structured SQLAlchemy URLs so credentials may
+# contain URL-reserved characters such as @, :, /, or #.
+DATABASE_URL = URL.create(
+    "postgresql+asyncpg",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=int(DB_PORT),
+    database=DB_NAME,
+)
+DATABASE_URL_SYNC = URL.create(
+    "postgresql",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=int(DB_PORT),
+    database=DB_NAME,
+    query={"sslmode": DB_SSL_MODE} if DB_SSL_MODE else {},
+)
 
 # Configure SSL for asyncpg
 # asyncpg uses ssl parameter (True/False/ssl.SSLContext)

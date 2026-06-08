@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 from sqlalchemy.sql import text
 
 from .models import Base
@@ -32,9 +33,23 @@ if not all([DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD]):
     ]
     raise ValueError(f"Missing required database environment variables: {', '.join(missing_vars)}")
 
-DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-ssl_params = f"?sslmode={DB_SSL_MODE}" if DB_SSL_MODE else ""
-DATABASE_URL_SYNC = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}{ssl_params}"
+DATABASE_URL = URL.create(
+    "postgresql+asyncpg",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=int(DB_PORT),
+    database=DB_NAME,
+)
+DATABASE_URL_SYNC = URL.create(
+    "postgresql",
+    username=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=int(DB_PORT),
+    database=DB_NAME,
+    query={"sslmode": DB_SSL_MODE} if DB_SSL_MODE else {},
+)
 
 import ssl
 

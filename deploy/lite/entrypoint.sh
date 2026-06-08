@@ -66,38 +66,59 @@ export DB_NAME="${DB_NAME:-vexa}"
 export DB_USER="${DB_USER:-postgres}"
 export DB_PASSWORD="${DB_PASSWORD:-}"
 
-if [ -z "$DATABASE_URL" ]; then
-    if [ -n "$DB_PASSWORD" ]; then
-        export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-    else
-        export DATABASE_URL="postgresql://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-    fi
-else
-    export DATABASE_URL="${DATABASE_URL/postgres:\/\//postgresql:\/\/}"
-    DB_URL_BASE="${DATABASE_URL%%\?*}"
-    DB_URL_NO_SCHEME="${DB_URL_BASE#*://}"
-    DB_USERPASS="${DB_URL_NO_SCHEME%%@*}"
-    DB_HOSTPORTDB="${DB_URL_NO_SCHEME#*@}"
-    if [[ "$DB_USERPASS" == *":"* ]]; then
-        export DB_USER="${DB_USERPASS%%:*}"
-        export DB_PASSWORD="${DB_USERPASS#*:}"
-    else
-        export DB_USER="$DB_USERPASS"
-    fi
-    DB_HOSTPORT="${DB_HOSTPORTDB%%/*}"
-    export DB_NAME="${DB_HOSTPORTDB#*/}"
-    if [[ "$DB_HOSTPORT" == *":"* ]]; then
-        export DB_HOST="${DB_HOSTPORT%%:*}"
-        export DB_PORT="${DB_HOSTPORT#*:}"
-    else
-        export DB_HOST="$DB_HOSTPORT"
-    fi
-    if [[ "$DATABASE_URL" == *"sslmode="* ]]; then
-        SSL_MODE_PARAM="${DATABASE_URL##*sslmode=}"
-        SSL_MODE_PARAM="${SSL_MODE_PARAM%%&*}"
-        export DB_SSL_MODE="$SSL_MODE_PARAM"
-    fi
-fi
+# Normalize DB env with a real URL parser/builder so passwords may contain
+# URL-reserved characters such as @, :, /, or #. DB_PASSWORD remains the raw
+# password for psql and application env; DATABASE_URL gets percent-encoded.
+eval "$(
+python3 - <<'PY'
+import os
+import shlex
+from urllib.parse import parse_qs, quote, unquote, urlsplit
+
+db_host = os.getenv("DB_HOST") or "localhost"
+db_port = os.getenv("DB_PORT") or "5432"
+db_name = os.getenv("DB_NAME") or "vexa"
+db_user = os.getenv("DB_USER") or "postgres"
+db_password = os.getenv("DB_PASSWORD") or ""
+db_ssl_mode = os.getenv("DB_SSL_MODE") or ""
+database_url = os.getenv("DATABASE_URL") or ""
+
+if database_url:
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+    parts = urlsplit(database_url)
+    if parts.username:
+        db_user = unquote(parts.username)
+    if parts.password and not db_password:
+        db_password = unquote(parts.password)
+    if parts.hostname:
+        db_host = parts.hostname
+    if parts.port:
+        db_port = str(parts.port)
+    if parts.path and parts.path != "/":
+        db_name = parts.path.lstrip("/")
+    query = parse_qs(parts.query)
+    if query.get("sslmode") and not db_ssl_mode:
+        db_ssl_mode = query["sslmode"][0]
+
+user = quote(db_user, safe="")
+password = quote(db_password, safe="")
+auth = f"{user}:{password}@" if db_password else f"{user}@"
+database_url = f"postgresql://{auth}{db_host}:{db_port}/{quote(db_name, safe='')}"
+if db_ssl_mode:
+    database_url = f"{database_url}?sslmode={quote(db_ssl_mode, safe='')}"
+
+for key, value in {
+    "DB_HOST": db_host,
+    "DB_PORT": db_port,
+    "DB_NAME": db_name,
+    "DB_USER": db_user,
+    "DB_PASSWORD": db_password,
+    "DATABASE_URL": database_url,
+    "DB_SSL_MODE": db_ssl_mode,
+}.items():
+    print(f"export {key}={shlex.quote(value)}")
+PY
+)"
 
 export DB_SSL_MODE="${DB_SSL_MODE:-disable}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
