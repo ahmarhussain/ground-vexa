@@ -23,7 +23,7 @@ That's it. Provisions PostgreSQL, pulls the Vexa Lite image, starts everything, 
 
 After it finishes:
 
-- **Dashboard:** `http://YOUR_IP:3000`
+- **Dashboard:** `http://YOUR_IP:${DASHBOARD_HOST_PORT:-3000}`
 - **API docs:** `http://YOUR_IP:8056/docs`
 
 To stop: `make lite-down`
@@ -40,7 +40,7 @@ To stop: `make lite-down`
 | Meeting API | 8080     | Bot orchestration, transcription pipeline           |
 | Runtime API | 8090     | Process lifecycle (spawns bots as child processes) |
 | Agent API   | 8100     | AI agent chat runtime                              |
-| Dashboard   | **3000** | Next.js web UI                                     |
+| Dashboard   | **3000 default** | Next.js web UI; set `DASHBOARD_HOST_PORT` to override |
 | MCP         | 18888    | Model Context Protocol server                      |
 | TTS         | 8059     | Text-to-speech (Piper, local)                      |
 | Redis       | 6379     | Internal pub/sub and session state                 |
@@ -127,7 +127,7 @@ docker logs -f vexa-lite
 | --------------- | --------------------------- | -------------------------- |
 | Bot isolation   | Shared process space        | Separate Docker containers |
 | Concurrent bots | Scales with machine resources | Scales with machine resources |
-| Dashboard port  | 3000                        | 3001                       |
+| Dashboard port  | 3000 default; uses `DASHBOARD_HOST_PORT` | 3001 default; uses `DASHBOARD_HOST_PORT` |
 | Redis           | Internal (ephemeral)        | Configurable               |
 | Scaling         | Single machine              | Multiple hosts             |
 | Setup           | `make lite`                 | `make all`                 |

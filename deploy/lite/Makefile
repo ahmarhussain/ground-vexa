@@ -111,9 +111,11 @@ set-dev:
 all: env preflight up init-db test
 	@HOST_IP=$$(hostname -I 2>/dev/null | awk '{print $$1}'); \
 	HOST=$${HOST_IP:-localhost}; \
+	DASH_PORT=$$(grep -E '^DASHBOARD_HOST_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DASH_PORT=$${DASH_PORT:-3000}; \
 	echo ""; \
 	echo "Vexa Lite is running."; \
-	echo "  Dashboard: http://$$HOST:3000"; \
+	echo "  Dashboard: http://$$HOST:$$DASH_PORT"; \
 	echo "  API docs:  http://$$HOST:8056/docs"
 
 # --- Environment (reuse compose env target) ---
@@ -188,6 +190,8 @@ up:
 	TX_TOKEN=$${TX_TOKEN:-$$(grep -E '^TRANSCRIPTION_SERVICE_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2)}; \
 	ADMIN_TK=$$(grep -E '^ADMIN_TOKEN=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
 	ADMIN_TK=$${ADMIN_TK:-changeme}; \
+	DASH_PORT=$$(grep -E '^DASHBOARD_HOST_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DASH_PORT=$${DASH_PORT:-3000}; \
 	if [ "$$USE_MANAGED_POSTGRES" = "true" ]; then \
 		echo "Starting PostgreSQL on 127.0.0.1:$$PG_PORT..."; \
 		if docker ps -q -f name=vexa-postgres 2>/dev/null | grep -q .; then \
@@ -244,6 +248,7 @@ up:
 		-e REDIS_PORT="$$REDIS_PORT" \
 		-e DISABLE_INTERNAL_REDIS="$$DISABLE_INTERNAL_REDIS" \
 		-e ADMIN_API_TOKEN="$$ADMIN_TK" \
+		-e DASHBOARD_HOST_PORT="$$DASH_PORT" \
 		-e VEXA_AUTH_COOKIE_NAME=vexa-token-lite \
 		-e VEXA_USER_INFO_COOKIE_NAME=vexa-user-info-lite \
 		-e TRANSCRIPTION_SERVICE_URL="$$TX_URL" \
@@ -283,7 +288,9 @@ init-db:
 # --- Test ---
 test:
 	@echo "Checking services..."
-	@for ep in "8056:API Gateway" "8057:Admin API" "3000:Dashboard"; do \
+	@DASH_PORT=$$(grep -E '^DASHBOARD_HOST_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2); \
+	DASH_PORT=$${DASH_PORT:-3000}; \
+	for ep in "8056:API Gateway" "8057:Admin API" "$$DASH_PORT:Dashboard"; do \
 		PORT=$${ep%%:*}; \
 		NAME=$${ep##*:}; \
 		if curl -sf -o /dev/null http://localhost:$$PORT/ 2>/dev/null; then \

@@ -65,6 +65,7 @@ export DB_PORT="${DB_PORT:-5432}"
 export DB_NAME="${DB_NAME:-vexa}"
 export DB_USER="${DB_USER:-postgres}"
 export DB_PASSWORD="${DB_PASSWORD:-}"
+export DASHBOARD_HOST_PORT="${DASHBOARD_HOST_PORT:-3000}"
 
 # Normalize DB env with a real URL parser/builder so passwords may contain
 # URL-reserved characters such as @, :, /, or #. DB_PASSWORD remains the raw
@@ -377,7 +378,7 @@ check "API Gateway"    "http://localhost:8056/"
 check "Meeting API"    "http://localhost:8080/health"
 check "Runtime API"    "http://localhost:8090/health"
 check "Agent API"      "http://localhost:8100/health"
-check "Dashboard"      "http://localhost:3000/"
+check "Dashboard"      "http://localhost:${DASHBOARD_HOST_PORT}/"
 if [ "${DISABLE_TTS_SERVICE:-false}" != "true" ]; then
     check "TTS Service"    "http://localhost:8059/health"
 fi
@@ -418,7 +419,7 @@ echo "  - Admin API:      http://localhost:8057"
 echo "  - Meeting API:    http://localhost:8080"
 echo "  - Runtime API:    http://localhost:8090"
 echo "  - Agent API:      http://localhost:8100"
-echo "  - Dashboard:      http://localhost:3000"
+echo "  - Dashboard:      http://localhost:${DASHBOARD_HOST_PORT}"
 echo "  - API Docs:       https://docs.vexa.ai"
 echo ""
 

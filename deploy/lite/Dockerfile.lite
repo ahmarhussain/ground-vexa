@@ -8,7 +8,7 @@
 # - Meeting API (:8080) — bot orchestration (process mode via Runtime API)
 # - Runtime API (:8090) — container lifecycle (process backend, no Docker)
 # - Agent API (:8100) — AI agent chat runtime
-# - Dashboard (:3000) — Next.js web UI
+# - Dashboard (:3000 by default, configurable with DASHBOARD_HOST_PORT) — Next.js web UI
 # - Vexa Bot (Node.js/Playwright) — spawned as child processes
 # - MCP Service (:18888) — Model Context Protocol
 # - TTS Service (:8059) — text-to-speech
@@ -19,6 +19,7 @@
 # Run:
 #   docker run -d \
 #     -p 8056:8056 -p 3000:3000 \
+#     -e DASHBOARD_HOST_PORT=3000 \
 #     -e DATABASE_URL="postgresql://user:pass@host:5432/vexa" \
 #     -e ADMIN_API_TOKEN="your-secret-token" \
 #     -e TRANSCRIPTION_SERVICE_URL="http://host:8083/v1/audio/transcriptions" \
@@ -301,7 +302,7 @@ ENV REDIS_HOST=localhost \
 # Ports
 # -----------------------------------------------------------------------------
 
-# API Gateway (main entry point) + Dashboard
+# API Gateway (main entry point) + Dashboard default port
 EXPOSE 8056 3000
 
 # -----------------------------------------------------------------------------
